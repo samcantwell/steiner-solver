@@ -155,6 +155,7 @@ end
 % Create an objective function with T built in
 objfun = @(x)f(x, T);
 
+% We set our starting points to what the current configuration is
 x0 = [];
 for i=1:height(T.Nodes)
     x0(2*i-1) = T.Nodes.x{i};
@@ -164,8 +165,38 @@ end
 % Now solve the objective function
 x = fmincon(objfun, x0, [], [], [], [], [], [], specific_cons);
 
+Tmatlab = T;
+
 % Using the optimal coordinates we just found, update the graph.
-for i=1:height(T.Nodes)
-    T.Nodes.x{i} = x(2*i-1);
-    T.Nodes.y{i} = x(2*i);
+for i=1:height(Tmatlab.Nodes)
+    Tmatlab.Nodes.x{i} = x(2*i-1);
+    Tmatlab.Nodes.y{i} = x(2*i);
 end
+
+display(Tmatlab);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Now that we've solved the problem using MATLAB's implementation
+% We will use the steepest descent method after applying a log barrier
+% We will also use BFGS to solve the single variable step size t
+
+Tpenalty = T;
+
+% To generate the penalty function, we need the constraint functions
+% We can use the function from above
+[c, ceq] = cons(x, T, b);
+
+function p, gradp = P(x, T, b, k)
+    [c, ceq] = cons(x, T, b);
+    p = f(x, T) - (1/k)*sum(log(-c)) + (k/2)*sum(ceq.^2);
+    gradp = gradient(p);
+end
+
+p, gradp = P(x0, Tpenalty, b, 1)
+
+tolerance1 = 0.001;
+tolerance2 = 0.001;
+
+[xminEstimate, fminEstimate,k] = steepestDescentMethod(p, gradp, x0, tolerance1, tolerance2, 1);
