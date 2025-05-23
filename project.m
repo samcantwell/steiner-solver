@@ -91,19 +91,52 @@ end
 
 % The edge weights in our graph are equal to the length of the edge
 % This is useful for later analysis
-%function weights = calculate_weights(T)
-%weights = [];
-%    for i = 1:height(T.Edges)
-%        a = T.Edges.EndNodes(i,1);
-%        b = T.Edges.EndNodes(i,2);
-%        p1 = [T.Nodes.x{a, 1}; T.Nodes.y{a, 1}];
-%        p2 = [T.Nodes.x{b, 1}; T.Nodes.y{b, 1}];
-%        v = p2 - p1;
-%        dist = norm(v);
-%        weights(i) = dist;
-%    end
-%end
-%
+function weights = calculate_weights(T)
+weights = [];
+    for i = 1:height(T.Edges)
+        a = T.Edges.EndNodes(i,1);
+        b = T.Edges.EndNodes(i,2);
+        p1 = [T.Nodes.x{a, 1}; T.Nodes.y{a, 1}];
+        p2 = [T.Nodes.x{b, 1}; T.Nodes.y{b, 1}];
+        v = p2 - p1;
+        dist = norm(v);
+        weights(i) = dist;
+    end
+end
+
+function weights = calculate_weights_at_x(T, x)
+    Tcopy = T;
+    for i=1:height(Tcopy.Nodes)
+        Tcopy.Nodes.x{i} = x(2*i-1);
+        Tcopy.Nodes.y{i} = x(2*i);
+    end
+    weights = [];
+    for i = 1:height(Tcopy.Edges)
+        a = Tcopy.Edges.EndNodes(i,1);
+        b = Tcopy.Edges.EndNodes(i,2);
+        p1 = [Tcopy.Nodes.x{a, 1}; Tcopy.Nodes.y{a, 1}];
+        p2 = [Tcopy.Nodes.x{b, 1}; Tcopy.Nodes.y{b, 1}];
+        v = p2 - p1;
+        dist = norm(v);
+        weights(i) = dist;
+    end
+end
+
+function gradf = gradf(T, x)
+    update_graph(T, x);
+    gradf = zeros([height(x) 1]);
+    for i = 1:height(T.Edges)
+        a = T.Edges.EndNodes(i,1);
+        b = T.Edges.EndNodes(i,2);
+        grad = zeros([height(x) 1]);
+        grad(a*2-1) = 2*x(a*2-1) - 2*x(b*2-1);
+        grad(b*2-1) = 2*x(b*2-1) - 2*x(a*2-1);
+        grad(a*2) = 2*x(a*2) - 2*x(b*2);
+        grad(b*2) = 2*x(b*2) - 2*x(a*2);
+        gradf = gradf + grad;
+    end
+end
+
 %weights = calculate_weights(T);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -126,7 +159,7 @@ function [c, ceq] = cons(x, T, b)
     for e = 1:height(T.Edges)
       i = T.Edges.EndNodes(e,1);
       j = T.Edges.EndNodes(e,2);
-      c(e) = (x(2*i-1)-x(2*j-1))^2 + (x(2*i)-x(2*j))^2 - b;
+      c(e) = (x(2*i-1)-x(2*j-1))^2 + (x(2*i)-x(2*j))^2 - b^2;
     end
 
     % Equality constraints. Fix the locations of the fixed points
@@ -173,10 +206,74 @@ for i=1:height(Tmatlab.Nodes)
     Tmatlab.Nodes.y{i} = x(2*i);
 end
 
-display(Tmatlab);
+%display(Tmatlab);
+matlab_weights = calculate_weights(Tmatlab)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+function Tcopy = update_graph(T, x)
+    Tcopy = T;
+    for i=1:height(Tcopy.Nodes)
+        Tcopy.Nodes.x{i} = x(2*i-1);
+        Tcopy.Nodes.y{i} = x(2*i);
+    end
+end
+
+% Inequality constraints
+function g = g(x, T, b)
+    T = update_graph(T, x);
+    g = [];
+    for e = 1:height(T.Edges)
+      i = T.Edges.EndNodes(e,1);
+      j = T.Edges.EndNodes(e,2);
+      g(e) = (x(2*i-1)-x(2*j-1))^2 + (x(2*i)-x(2*j))^2 - b^2;
+    end
+end
+
+% Gradient of inequality constraints
+function gradg = gradg(x, T)
+    T = update_graph(T, x);
+    gradg = [];
+    for e = 1:height(T.Edges)
+      i = T.Edges.EndNodes(e,1);
+      j = T.Edges.EndNodes(e,2);
+      gradgi = zeros([height(x) 1]);
+      gradgi(2*i-1) = 2*x(2*i-1) - 2*x(2*j-1);
+      gradgi(2*j-1) = 2*x(2*j-1) - 2*x(2*i-1);
+      gradgi(2*i)   = 2*x(2*i)   - 2*x(2*j);
+      gradgi(2*j)   = 2*x(2*j)   - 2*x(2*i);
+      gradg = [gradg gradgi];
+    end
+end
+
+% Equality constraints
+function h = h(x, T)
+    %T = update_graph(T, x);
+    h = [];
+    for i=1:height(T.Nodes)
+      if T.Nodes.Steiner{i}==0
+        h = [h (x(2*i-1) - T.Nodes.x{i})];
+        h = [h (x(2*i)   - T.Nodes.y{i})];
+      end
+    end
+end
+
+% Gradient of equality constraints
+function gradh = gradh(x, T)
+    %T = update_graph(T, x);
+    gradh = [];
+    for i=1:height(T.Nodes)
+        if T.Nodes.Steiner{i}==0
+            x = zeros([height(x) 1]);
+            x(2*i-1) = 1;
+            y = zeros([height(x) 1]);
+            y(2*i) = 1;
+            gradh = [gradh x y];
+        end
+    end
+end
+
 
 % Now that we've solved the problem using MATLAB's implementation
 % We will use the steepest descent method after applying a log barrier
@@ -186,17 +283,50 @@ Tpenalty = T;
 
 % To generate the penalty function, we need the constraint functions
 % We can use the function from above
-[c, ceq] = cons(x, T, b);
 
-function p, gradp = P(x, T, b, k)
-    [c, ceq] = cons(x, T, b);
-    p = f(x, T) - (1/k)*sum(log(-c)) + (k/2)*sum(ceq.^2);
-    gradp = gradient(p);
+function [p, gradp] = P(x, T, b, k)
+    c = g(x, T, b);
+    ceq = h(x, T);
+    gradc = gradg(x, T);
+    gradceq = gradh(x, T);
+
+    weights = calculate_weights_at_x(T, x);
+
+    p = sum(weights.^2) - (1/k)*sum(log(-c)) + (k/2)*sum(ceq.^2);
+    gradp = gradf(T, x) - (gradc * (1./(k.*c)).') + (gradceq * k*ceq.');
 end
 
-p, gradp = P(x0, Tpenalty, b, 1)
+k = 10;
+p = @(x) P_p(x, Tpenalty, b, k);
+gradp = @(x) P_grad(x, Tpenalty, b, k);
 
-tolerance1 = 0.001;
-tolerance2 = 0.001;
+function out = P_p(x, Tpenalty, b, k)
+    [out,~] = P(x,Tpenalty,b,k);
+end
+function out = P_grad(x, Tpenalty, b, k)
+    [~,out] = P(x,Tpenalty,b,k);
+end
 
-[xminEstimate, fminEstimate,k] = steepestDescentMethod(p, gradp, x0, tolerance1, tolerance2, 1);
+
+tolerance1 = 0.1;
+tolerance2 = 0.1;
+
+x0 = x0.';
+
+display(Tpenalty);
+
+for i=0:4
+    k = 2^i;
+    p = @(x) P_p(x, Tpenalty, b, k);
+    gradp = @(x) P_grad(x, Tpenalty, b, k);
+    [xminEstimate, fminEstimate,k] = steepestDescentMethod(p, gradp, x0, tolerance1, tolerance2, 1)
+    %weights = calculate_weights_at_x(T, xminEstimate)
+    %c = g(xminEstimate, T, b)
+    %ceq = h(xminEstimate, T)
+    %sum(weights.^2)
+    %(1/k)*sum(log(-c))
+    %(k/2)*sum(ceq.^2)
+end
+
+xminEstimate
+display(update_graph(Tpenalty, xminEstimate));
